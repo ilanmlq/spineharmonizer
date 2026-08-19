@@ -1,0 +1,174 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  PATIENT
+  DOCTOR
+  PARENT
+}
+
+enum State {
+  WORN
+  NOT_WORN
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String?  @unique
+  username  String   @unique
+  password  String
+  role      Role
+  createdAt DateTime @default(now())
+  passwordHash String
+
+  // Les relations inverses pour les programmes
+  programsAsPatient Program[] @relation("PatientPrograms")
+  programsAsDoctor  Program[] @relation("DoctorPrograms")
+
+  // --- RELATION PARENT ---
+  parentsId Int?
+  parent    User?    @relation("ParentToPatient", fields: [parentsId], references: [id])
+  children  User[]   @relation("ParentToPatient")
+
+  // --- RELATION DOCTEUR ---
+  doctorId  Int?
+  doctor    User?    @relation("DoctorToPatient", fields: [doctorId], references: [id])
+  patients  User[]   @relation("DoctorToPatient")
+
+  // --- RELATION PRESCRIPTION ---
+  prescription       Prescription?  @relation("PatientPrescription")
+  prescriptionsWritten Prescription[] @relation("DoctorPrescriptions")
+
+  refreshTokens RefreshToken[]
+  corset    Corset?
+}
+
+enum TokenState {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  USED
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  tokenHash     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status   TokenState @default(ACTIVE)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  familyId  String?
+}
+
+model Corset {
+  id        Int   @id @default(autoincrement())
+  patientId Int?  @unique
+  patient   User? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  settings  CorsetSetting[]
+  events    CorsetEvent[]
+}
+
+model CorsetSetting {
+  id           Int      @id @default(autoincrement())
+  corsetId     Int
+  corset       Corset   @relation(fields: [corsetId], references: [id])
+  subAuxiliary Int
+  lumbar       Int
+  thoracic     Int
+  trochanter   Int
+  timestamp    DateTime @default(now())
+}
+
+model CorsetEvent {
+  id           Int      @id @default(autoincrement())
+  corsetId     Int
+  corset       Corset   @relation(fields: [corsetId], references: [id])
+  battery      Int
+  state        State 
+  subAuxiliary Int
+  lumbar       Int
+  thoracic     Int
+  trochanter   Int
+  timestamp    DateTime @default(now())
+}
+
+model Exercise {
+  id          Int    @id @default(autoincrement())
+  name        String @unique
+  description String
+  image       String
+  url         String
+
+  programs      ProgramOnExercise[]
+}
+
+model Program {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String
+  startDate   DateTime
+  endDate     DateTime
+
+  // Relation Patient
+  patientId   Int
+  patient     User     @relation("PatientPrograms", fields: [patientId], references: [id])
+
+  // Relation Docteur
+  doctorId    Int
+  doctor      User     @relation("DoctorPrograms", fields: [doctorId], references: [id])
+
+  prescriptionId Int
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+
+  exercises   ProgramOnExercise[]
+  createdAt   DateTime @default(now())
+}
+
+model ProgramOnExercise {
+  id          Int @id @default(autoincrement())
+  programId   Int
+  program     Program @relation(fields: [programId], references: [id])
+
+  exerciseId  Int
+  exercise    Exercise @relation(fields: [exerciseId], references: [id])
+  sets        Int
+  repetitions Int
+  time        Int
+
+  exerciseRealizations ExerciseRealization[]
+}
+
+model ExerciseRealization {
+  id                Int      @id @default(autoincrement())
+  startedAt         DateTime
+  finishedAt        DateTime
+  repsDone          Int
+  done              Boolean  @default(false)
+  // ----- Relation Program -----
+  programOnExerciseId Int
+  programOnExercise   ProgramOnExercise @relation(fields: [programOnExerciseId], references: [id])
+}
+
+model Prescription {
+  id         Int      @id @default(autoincrement())
+  duration   Int      // Durée de port du corset en heures par jour
+  createdAt  DateTime @default(now())
+
+  patientId  Int      @unique
+  patient    User     @relation("PatientPrescription", fields: [patientId], references: [id])
+
+  // Relation Docteur
+  doctorId   Int
+  doctor     User     @relation("DoctorPrescriptions", fields: [doctorId], references: [id])
+
+  programs   Program[]
+}

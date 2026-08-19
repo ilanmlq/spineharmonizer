@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: uni-ete-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+      TZ: UTC
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mydb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: uni-ete-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      - TZ=UTC
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "3000"]
+      interval: 30s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/src
+          target: /app/src
+        - action: sync
+          path: ./backend/prisma
+          target: /app/prisma
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./backend/package-lock.json
+        - action: rebuild
+          path: ./backend/tsconfig.json
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    container_name: uni-ete-frontend
+    working_dir: /app
+    ports:
+      - "8081:8081"
+    environment:
+      - EXPO_NO_TELEMETRY=1
+      - EXPO_PUBLIC_API_URL=http://10.136.207.141:3000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    stdin_open: true
+    tty: true
+    command: npx expo start --tunnel --port 8081
+  studio:
+    build: ./backend
+    command: npm run prisma:studio
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5555:5555"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - studio
+
+  seed:
+    build: ./backend
+    command: npm run prisma:seed
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - seed
+
+volumes:
+  postgres_data:
